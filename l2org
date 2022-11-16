@@ -24,6 +24,8 @@
 # PYTHON_ARGCOMPLETE_OK
 import re
 
+debug = False
+
 
 def main():
     """Main function."""
@@ -83,7 +85,9 @@ def get_arguments():
     if args.infile == outfile:
         sys.stderr.write("Input and output file have the same name: " + outfile + "\n")
 
+
     print("Input file:  " + args.infile)
+
     print("Output file: " + outfile)
 
     return args.infile, outfile
@@ -161,37 +165,48 @@ def citations(nl, lines, ofl) -> str:
         nl = f"{nl} {next(lines)}"
         nl = nl.replace("\n", " ")
         i = i + 1
-        print(f"i = {i}")
+        if debug:
+            print(f"i = {i}")
         if i > 3:
             raise ValueError(f"Unable to find end of citation in {nl}")
 
     # do we have multiple citations in the line?
     nc = nl.count("cite")
     # nl = nl.replace("\%", "%") # regex does not like \%
-    print(f"nl = '{nl}'")
+    if debug:
+        print(f"nl = '{nl}'")
     if nc > 1:  # get first cite expression
         ce = re.search(r"\\cite.*?\}", nl).group()  # first section
-        print(f"ce = '{ce}'")
+        if debug:
+            print(f"ce = '{ce}'")
         nl, nl1 = nl.split(ce, 1)  # section before cite
         nl = nl + ce
-        print(f"nl = '{nl}'")
-        print(f"nl1 = '{nl1}'")
+        if debug:
+            print(f"nl = '{nl}'")
+        if debug:
+            print(f"nl1 = '{nl1}'")
 
-    print(f"nl = {nl}")
+    if debug:
+        print(f"nl = {nl}")
     # get citation type
     ct = re.search(r"\\cite\*?\b\[|\\cite.*?\{", nl).group()[1:-1]
-    print(f"ct='{ct}'\n")
+    if debug:
+        print(f"ct='{ct}'\n")
     ss = r"\\" + ct + ".*?\}"  # build regex
     ce = re.search(ss, nl).group()  # find citation expression
-    print(f"ce = '{ce}'")
+    if debug:
+        print(f"ce = '{ce}'")
     pre_text = nl.split(ce)[0]  # save remaining string
     post_text = nl.split(ce)[1]  # save remaining string
-    print(f"pre_text = '{pre_text}'")
-    print(f"post_text = '{post_text}'")
+    if debug:
+        print(f"pre_text = '{pre_text}'")
+    if debug:
+        print(f"post_text = '{post_text}'")
 
     # get the string between the curly braces
     cl = re.search(r"\{.*?\}", ce).group().strip()[1:-1]
-    print(f"cl = '{cl}'\n")
+    if debug:
+        print(f"cl = '{cl}'\n")
     if "," in cl:
         cl = cl.split(",")
         # process citation entries
@@ -204,19 +219,23 @@ def citations(nl, lines, ofl) -> str:
     else:
         cs = "&" + cl
 
-    print(f"cs = {cs}")
+    if debug:
+        print(f"cs = {cs}")
     # deal with pre and post & text
     c_opt = ce.count("]")
     if c_opt == 1:
         cl_pre = re.search(r"\[.*?\]", ce).group()[1:-1]
-        print(f"o = 1, cl_pre = '{cl_pre}'")
+        if debug:
+            print(f"o = 1, cl_pre = '{cl_pre}'")
         ct = f"{ct}:{cl_pre};{cs};"
     elif c_opt == 2:
         cl_pre = re.search(r"\[.*?\]", ce).group()[1:-1]
         cl_post = re.search(r"\]\[.*?\]", ce).group()[2:-1]
-        print(f"o = 2 cl_pre = '{cl_pre}'")
+        if debug:
+            print(f"o = 2 cl_pre = '{cl_pre}'")
         if cl_post:
-            print(f"o = 2 cl_post = '{cl_post}'")
+            if debug:
+                print(f"o = 2 cl_post = '{cl_post}'")
             ct = f"{ct}:{cl_pre} ;{cs}; {cl_post}"
         else:
             ct = f"{ct}:{cl_pre} ;{cs};"
@@ -228,15 +247,18 @@ def citations(nl, lines, ofl) -> str:
     ofl.write(f"{line}")
 
     if nl1 and post_text:
-        print(f"nl1 = {nl1}, post_text = {post_text}")
+        if debug:
+            print(f"nl1 = {nl1}, post_text = {post_text}")
         citations(nl1, lines, ofl)
         line = line_latex_to_orgmode(post_text)
         ofl.write(f"{line}")
     elif nl1 and not post_text:
-        print(f"nl1 = {nl1}")
+        if debug:
+            print(f"nl1 = {nl1}")
         citations(nl1, lines, ofl)
     elif not nl1 and post_text:
-        print(f"post_text = {post_text}")
+        if debug:
+            print(f"post_text = {post_text}")
         line = line_latex_to_orgmode(post_text)
         ofl.write(f"{line}")
 
@@ -301,7 +323,8 @@ def section_commands(nl, lines, ofl) -> bool:
     else:
         raise ValueError(f"marker = {section_type} is not valid")
 
-    print(f"marker = {marker} {section_title}")
+    if debug:
+        print(f"marker = {marker} {section_title}")
     # build section text
     nl = f"{marker}{section_title}\n"
     if not short_title == "":
@@ -324,20 +347,17 @@ def special_environments(nl, lines, ofl) -> bool:
     """
 
     is_env = ""
-
-    se: list = [
-        "table",
-        "tabular",
-        "tabularx",
-        "longtable",
-        "figure",
-    ]
-
+    # list of environments you want to keep in the running text, rather
+    # than wrapping in a latex export block 
+    exclude_env = [] # ["equation", "table"]
     is_env = re.search(r"^\\begin{.*?\}", nl)
 
     if is_env is not None:
         env = is_env.group()[7:-1]
-        print(f"env = {env}")
+        if env in exclude_env:
+            return False
+        if debug:
+            print(f"env = {env}")
         ofl.write("\n#+BEGIN_EXPORT latex\n")
         while f"end{{{env}}}" not in nl:
             if nl.strip() != "":
@@ -384,7 +404,7 @@ def file_latex_to_orgmode(infile, outfile):
                     line = line_latex_to_orgmode(line)
                     # line = citations(line, lines, ofl)
                     ofl.write("%s" % (line))
-                # print(iline, line)
+                # if debug: print(iline, line)
         except StopIteration:
             print(str(iline) + " lines processed.")
             exit
