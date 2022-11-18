@@ -24,7 +24,7 @@
 # PYTHON_ARGCOMPLETE_OK
 import re
 
-debug = True
+debug = False
 
 
 def main():
@@ -125,6 +125,8 @@ def read_header(nl, lines, ofl) -> bool:
                 elif "\\email" in nl:
                     s = re.search(r"\{.*\}", nl).group()[1:-1]
                     nl = f"#+email: {s}\n"
+                elif "\documentclass" in nl:
+                    nl = ""
                 else:
                     nl = f"#+latex_header: {nl}"
 
@@ -162,7 +164,23 @@ def get_string_between_brackets(brackets: str, string: str) -> tuple[str, int, i
     return rs, j, i
 
 
-def citations(nl, lines, ofl) -> str:
+def fix_bibliography(nl, lines, ofl) -> bool:
+    """add the correct file extensions to the bib files"""
+    new_list = ""
+    if "bibliography{" in nl:
+        bibstring = re.search(r"\{.*\}", nl).group()[1:-1]
+        if debug:
+            print(f"bibstring = {bibstring}")
+        biblist = bibstring.split(",")
+        for e in biblist:
+            new_list = new_list + e + ".bib,"
+        new_list = new_list[:-1]
+        ofl.write(f"bibliography:{new_list}")
+        return True
+    return False
+
+
+def citations(nl, lines, ofl) -> bool:
     """Convert to Org type citations
     parameters:
     nl: current line
@@ -228,7 +246,8 @@ def citations(nl, lines, ofl) -> str:
             print(f"ct = {ct}")
         # get entire string starting with citation
         temp = nl[nl.index(temp) :]
-        print(f"temp = {temp}")
+        if debug:
+            print(f"temp = {temp}")
         # get text between first brackets
         b1, j1, i1 = get_string_between_brackets("[]", temp)
         if b1:
@@ -256,9 +275,10 @@ def citations(nl, lines, ofl) -> str:
 
     # create complete cite expression
     ce = "\\" + cs + "{" + cl + "}"
-    print(f"ce for split = {ce}")
+    if debug:
+        print(f"ce for split = {ce}")
     # split string into before and after center
-    pre_text, post_text = nl.split(ce)
+    pre_text, post_text = nl.split(ce, 1)
     if debug:
         print(f"pre_text = {pre_text}\n")
         print(f"post_text = {post_text}\n")
@@ -275,7 +295,7 @@ def citations(nl, lines, ofl) -> str:
         print(f"cl = {cl}")
         print(f"b1 = {b1}")
         print(f"b2= {b2}")
-        
+
     if b1 and not b2:
         cs = f"{ct}:{b1};{cl};"
     elif b1 and b2:
@@ -295,7 +315,8 @@ def citations(nl, lines, ofl) -> str:
     if post_text != "":
         # check for more citations
         if not citations(post_text, lines, ofl):
-            ofl.write(post_text)
+            line = line_latex_to_orgmode(post_text)
+            ofl.write(line)
 
     return True
 
@@ -350,7 +371,7 @@ def section_commands(nl, lines, ofl) -> bool:
     section_title = re.search(r"\{.*?\}", section_string).group()[1:-1]
 
     # test if text after caption
-    text_after = nl.split(section_string)[1]
+    text_after = nl.split(section_string, 1)[1]
 
     # get section type
     if section_type in marker_dict:
@@ -365,6 +386,7 @@ def section_commands(nl, lines, ofl) -> bool:
     if not short_title == "":
         nl = f"{nl}{short_title}"
     if not text_after == "":
+        text_after = line_latex_to_orgmode(text_after)
         nl = f"{nl}{text_after}"
 
     ofl.write("%s" % (nl))
@@ -384,7 +406,7 @@ def special_environments(nl, lines, ofl) -> bool:
     is_env = ""
     # list of environments you want to keep in the running text, rather
     # than wrapping in a latex export block
-    exclude_env = []  # ["equation", "table"]
+    exclude_env = ["itemize"]  #
     is_env = re.search(r"^\\begin{.*?\}", nl)
 
     if is_env is not None:
@@ -415,52 +437,57 @@ def file_latex_to_orgmode(infile, outfile):
     """
     # Open the input and output files:
     # ifl = open(infile, 'r')
-    ofl = open(outfile, "w")
-    # ofl.write("#+startup: latexpreview")
+    # ofl = open(outfile, "w")
+    with open(outfile, "w") as ofl:
+        # ofl.write("#+startup: latexpreview")
 
-    iline = 0
-    with open(infile, "r") as lines:
-        try:
-            while True:
-                iline += 1
+        iline = 0
+        with open(infile, "r") as lines:
+            try:
+                while True:
+                    iline += 1
 
-                # Read data line and extract column contents:
-                # line = ifl.readline()
-                line = next(lines)
-                if read_header(line, lines, ofl):
-                    pass
-                elif section_commands(line, lines, ofl):
-                    pass
-                elif special_environments(line, lines, ofl):
-                    pass
-                elif citations(line, lines, ofl):
-                    pass
-                else:
-                    line = line_latex_to_orgmode(line)
-                    # line = citations(line, lines, ofl)
-                    ofl.write("%s" % (line))
-                # if debug: print(iline, line)
-        except StopIteration:
-            print(str(iline) + " lines processed.")
-            exit
+                    # Read data line and extract column contents:
+                    # line = ifl.readline()
+                    line = next(lines)
+                    if read_header(line, lines, ofl):
+                        pass
+                    elif section_commands(line, lines, ofl):
+                        pass
+                    elif special_environments(line, lines, ofl):
+                        pass
+                    elif citations(line, lines, ofl):
+                        pass
+                    elif fix_bibliography(line, lines, ofl):
+                        pass
+                    else:
+                        line = line_latex_to_orgmode(line)
+                        # line = citations(line, lines, ofl)
+                        ofl.write("%s" % (line))
+                    # if debug: print(iline, line)
+            except StopIteration:
+                print(str(iline) + " lines processed.")
+                exit
 
-    # Close output file
-    ofl.close()
+        # Close output file
+        # ofl.close()
 
     # Reopen output file and remove empty lines:
     # Reopen the output (Org mode) file and read its contents:
-    ofl = open(outfile, "r")
-    lines = ofl.read()  # Returns lines as a single string, including '\n'
-    ofl.close()
+    with open(outfile, "r") as ofl:
+        # ofl = open(outfile, "r")
+        lines = ofl.read()  # Returns lines as a single string, including '\n'
+    # ofl.close()
 
     # Remove empty lines:
     for itr in range(10):
         lines = re.sub(r" *\n *\n *\n", r"\n\n", lines)
 
     # Write the result back to the same file:
-    ofl = open(outfile, "w")
-    ofl.write(lines)
-    ofl.close()
+    with open(outfile, "w") as ofl:
+        # ofl = open(outfile, "w")
+        ofl.write(lines)
+    # ofl.close()
     return
 
 
@@ -516,7 +543,8 @@ def line_latex_to_orgmode(line):
     line = re.sub(r"( [Tt]abs*)\.*\,", r"\1.", line)
 
     # Spaces:
-    line = re.sub(r"\~", r"\\nbsp{}", line)
+    line = re.sub(r"~", r"\\space{}", line)
+    line = re.sub(r"\\textperthousand", r"‰", line)
     line = re.sub(r"\\,", r" ", line)
 
     # Cetera:
@@ -548,7 +576,7 @@ def line_latex_to_orgmode(line):
     line = re.sub(r"^.*\\end{document}.*\n", r"", line)
     line = re.sub(r"^.*\\end{document}", r"", line)
     line = re.sub(r"\\bibliographystyle\{(.*?)\}", r"bibliographystyle:\1", line)
-    line = re.sub(r"\\bibliography\{(.*?)\}", r"bibliography:\1", line)
+    # line = re.sub(r"\\bibliography\{(.*?)\}", r"bibliography:\1", line)
     line = re.sub(r"^.*\\begin\{center\}.*\n", r"", line)
     line = re.sub(r"^.*\\end\{center\}.*\n", r"", line)
     line = re.sub(r"^.*\\begin\{tiny\}.*\n", r"", line)
