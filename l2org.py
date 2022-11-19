@@ -26,7 +26,6 @@ import re
 
 debug = False
 
-
 def main():
     """Main function."""
 
@@ -111,6 +110,7 @@ def read_header(nl, lines, ofl) -> bool:
 
     if "documentclass" in nl:
         header = True
+        ofl.write("#+startup: latexpreview\n")
         while "begin{document}" not in nl:
             if nl.strip() != "":
                 if "\\author" in nl:
@@ -177,7 +177,8 @@ def fix_bibliography(nl, lines, ofl) -> bool:
         new_list = new_list[:-1]
         ofl.write(f"bibliography:{new_list}")
         return True
-    return False
+    else:
+        return False
 
 
 def citations(nl, lines, ofl) -> bool:
@@ -190,7 +191,7 @@ def citations(nl, lines, ofl) -> bool:
     Return true if citation was found
     """
 
-    i1 = i1 = j1 = j2 = 0  # counter
+    i = i1 = i1 = j1 = j2 = 0  # counter
     cs = ""
     cl = ""
     ce = ""
@@ -358,6 +359,8 @@ def section_commands(nl, lines, ofl) -> bool:
 
     # extract section stype and string
     section_string = re.search(r"^.*?\}", nl).group()
+    if debug:
+        print(f"section_string = {section_string}")
     # test if short format
     if "[" in section_string:
         section_type = re.search(r"^.*?\[", nl).group()[1:-1]
@@ -368,7 +371,13 @@ def section_commands(nl, lines, ofl) -> bool:
     else:
         section_type = re.search(r"^.*?\{", nl).group()[1:-1]
 
+    if debug:
+        print(f"section_type={section_type}")
+
     section_title = re.search(r"\{.*?\}", section_string).group()[1:-1]
+
+    if debug:
+        print(f"section_title = {section_title}")
 
     # test if text after caption
     text_after = nl.split(section_string, 1)[1]
@@ -383,13 +392,18 @@ def section_commands(nl, lines, ofl) -> bool:
         print(f"marker = {marker} {section_title}")
     # build section text
     nl = f"{marker}{section_title}\n"
-    if not short_title == "":
+    if short_title != "":
+        if debug:
+            print(f"short_title = {short_title}")
         nl = f"{nl}{short_title}"
-    if not text_after == "":
+    if text_after != "":
+        if debug:
+            print(f"text_after='{text_after}'")
         text_after = line_latex_to_orgmode(text_after)
         nl = f"{nl}{text_after}"
 
-    ofl.write("%s" % (nl))
+    if debug: print(f"nl = {nl}")
+    ofl.write(f"{nl}")
     return True
 
 
@@ -446,49 +460,47 @@ def file_latex_to_orgmode(infile, outfile):
             try:
                 while True:
                     iline += 1
-
-                    # Read data line and extract column contents:
-                    # line = ifl.readline()
                     line = next(lines)
-                    if read_header(line, lines, ofl):
+                    if line[0] == "%":  # keep comments
+                        ofl.write(f"#+latex: {line}")
+                        if debug: print("found comment")
+                    elif read_header(line, lines, ofl):
+                        if debug: print("found header")
                         pass
                     elif section_commands(line, lines, ofl):
+                        if debug: print("found section_commands")
                         pass
                     elif special_environments(line, lines, ofl):
+                        if debug: print("found special_environments")
                         pass
                     elif citations(line, lines, ofl):
+                        if debug: print("found citations")
                         pass
                     elif fix_bibliography(line, lines, ofl):
+                        if debug: print("found bibliography")
                         pass
                     else:
+                        if debug: print(f"writing line = '{line}'")
                         line = line_latex_to_orgmode(line)
-                        # line = citations(line, lines, ofl)
-                        ofl.write("%s" % (line))
+                        ofl.write(f"{line}")
                     # if debug: print(iline, line)
             except StopIteration:
                 print(str(iline) + " lines processed.")
                 exit
 
-        # Close output file
-        # ofl.close()
-
     # Reopen output file and remove empty lines:
     # Reopen the output (Org mode) file and read its contents:
-    with open(outfile, "r") as ofl:
-        # ofl = open(outfile, "r")
-        lines = ofl.read()  # Returns lines as a single string, including '\n'
-    # ofl.close()
+    # with open(outfile, "r") as ofl:
+    #     # ofl = open(outfile, "r")
+    #     lines = ofl.read()  # Returns lines as a single string, including '\n'
 
-    # Remove empty lines:
-    for itr in range(10):
-        lines = re.sub(r" *\n *\n *\n", r"\n\n", lines)
+    # # Remove empty lines:
+    # for itr in range(10):
+    #     lines = re.sub(r" *\n *\n *\n", r"\n\n", lines)
 
-    # Write the result back to the same file:
-    with open(outfile, "w") as ofl:
-        # ofl = open(outfile, "w")
-        ofl.write(lines)
-    # ofl.close()
-    return
+    # # Write the result back to the same file:
+    # with open(outfile, "w") as ofl:
+    #     ofl.write(lines)
 
 
 def line_latex_to_orgmode(line):
@@ -500,14 +512,9 @@ def line_latex_to_orgmode(line):
     Returns:
       (str):  A line containing Orgmode code.
     """
-
     # special escapes
-    line = re.sub(r"^%", r"#+latex: %", line)
-    line = line.replace("\%", "%")
-
-    # Title, author, etc:
-    line = re.sub(r"\\email[* ]*\{([^}]*)\}", r"#+email:  \1", line)
-    line = re.sub(r"\\date[* ]*\{([^}]*)\}", r"#+date:   \1", line)
+    # line = re.sub(r"^%", r"#+latex: %", line)
+    # line = line.replace("%", "%")
 
     # References to equations:
     line = re.sub(r"( [Ee]quations*)[~ ]\(([^)]*)\)", r"\1 \2", line)
@@ -542,13 +549,22 @@ def line_latex_to_orgmode(line):
     line = re.sub(r"( [Tt]abs*)\.*[~ ]", r"\1.", line)
     line = re.sub(r"( [Tt]abs*)\.*\,", r"\1.", line)
 
-    # Spaces:
-    line = re.sub(r"~", r"\\space{}", line)
+    # Misc
+    # avoid trivial inline math
+    line = re.sub(r"\$([0-9A-Za-z]+)?([\^|_])({\d+})([0-9A-Za-z])?\$", r"\1\2\3\4", line)
+    line = re.sub(r"\$(:?[<|>])*(:?[0-9]*)(\^\{[0-9]*\})\$", r"\1\2\3", line)
+    line = re.sub(r"\$(:?[<|>])*(:?[0-9]*)(:?\^)*(:?[0-9])*\$", r"\1\2\3\4", line)
+    line = re.sub(r"\$([<|>])*\$", r"\1", line)
+    
+    line = re.sub(r"~", "\u00A0", line)
+    line = re.sub(r"$~$", "~", line)
+    line = re.sub(r"\$\\sim\$", "~", line)
+    line = re.sub(r"\\textasciitilde\{\}", r"~", line)
+    line = re.sub(r"\\textperthousand\\", r"‰", line)
     line = re.sub(r"\\textperthousand", r"‰", line)
-    line = re.sub(r"\\,", r" ", line)
+    # line = re.sub(r"\\,", r" ", line)
 
     # Cetera:
-    # line = re.sub(r"^.*\\maketitle.*\n", r"", line)
     line = re.sub(r"^.*\\setcounter[\[{].*\n", r"", line)
     line = re.sub(r"^.*\\setlength[\[{].*\n", r"", line)
     line = re.sub(r"^.*\\newlength[\[{].*\n", r"", line)
@@ -572,11 +588,9 @@ def line_latex_to_orgmode(line):
     )  # Move trailing \label{} to its own line
 
     # Begin/end stuff:
-
     line = re.sub(r"^.*\\end{document}.*\n", r"", line)
     line = re.sub(r"^.*\\end{document}", r"", line)
-    line = re.sub(r"\\bibliographystyle\{(.*?)\}", r"bibliographystyle:\1", line)
-    # line = re.sub(r"\\bibliography\{(.*?)\}", r"bibliography:\1", line)
+    line = re.sub(r"(^.*\\bibliographystyle{)(.*)\}", r"bibliographystyle:\2", line)
     line = re.sub(r"^.*\\begin\{center\}.*\n", r"", line)
     line = re.sub(r"^.*\\end\{center\}.*\n", r"", line)
     line = re.sub(r"^.*\\begin\{tiny\}.*\n", r"", line)
@@ -637,58 +651,9 @@ def line_latex_to_orgmode(line):
         r"^ *\\textbf[* ]*\{([^}]*)\} *$", r"\n**** \1", line
     )  # full-line \textbf appears to be used as a paragraph
 
-    # Beamer frames/slides:
-    line = re.sub(r"^.*\\frame[\[{].*\n", r"", line)  # Followed by [ or {
-    line = re.sub(
-        r"^ *\\frametitle[* ]*\{([^}]*)\} *\n", r"\n*** \1", line
-    )  # Assume \section and \subsection are converted to * and **
-    line = re.sub(
-        r" *\\frametitle[* ]*\{([^}]*)\} *", r"\n*** \1", line
-    )  # Assume \section and \subsection are converted to * and **
-
-    line = re.sub(
-        r"^ *\\begin\{block\}[* ]*\{\} *\n", r"", line
-    )  # Block w/o title -> nothing
-    line = re.sub(
-        r" *\\begin\{block\}[* ]*\{\} *", r"", line
-    )  # Block w/o title -> nothing
-    line = re.sub(
-        r"^ *\\begin\{block\}[* ]*\{([^}]*)\} *\n", r"\n**** \1", line
-    )  # Assume \section, \subsection and \frametitle are converted to *, ** and ***
-    line = re.sub(
-        r" *\\begin\{block\}[* ]*\{([^}]*)\} *", r"\n**** \1", line
-    )  # Assume \section, \subsection and \frametitle are converted to *, ** and ***
-    line = re.sub(r"^ *\\end\{block\} *\n", r"", line)
-
-    line = re.sub(r"^ *\\begin\{columns\}[* ]* *\n", r"", line)
-    line = re.sub(r"^ *\\end\{columns\} *\n", r"", line)
-    line = re.sub(r"^ *\\begin\{column\}[* ]*\{.*\} *\n", r"", line)
-    line = re.sub(r"^ *\\end\{column\} *\n", r"", line)
-
-    line = re.sub(r"^ *\\uncover<[0-9]*->\{ *\n", r"", line)
-    line = re.sub(r"\\uncover<[0-9]*->\{", r"", line)
-
-    # My Beamer macros:
-    line = re.sub(r"\{\\bluetext ([^{}]*)\}", r" blue: \1", line)
-    line = re.sub(r"\{\\redtext ([^{}]*)\}", r" red: \1", line)
-    line = re.sub(r"\{\\purpletext ([^{}]*)\}", r" purple: \1", line)
-    line = re.sub(r"\{\\greentext ([^{}]*)\}", r" green: \1", line)
-    line = re.sub(r"\{\\yellowtext ([^{}]*)\}", r" yellow: \1", line)
-    line = re.sub(r"\\bluetext ", r"blue: ", line)
-    line = re.sub(r"\\redtext ", r"red: ", line)
-    line = re.sub(r"\\purpletext ", r"purple: ", line)
-    line = re.sub(r"\\greentext ", r"green: ", line)
-    line = re.sub(r"\\yellowtext ", r"yellow: ", line)
-    line = re.sub(r"\\normaltext", r"", line)
-
     # Labels and references:
     line = re.sub(r"\\label[* ]*\{([^}]*)\}", r"label:\1", line)
     line = re.sub(r"\\ref[* ]*\{([^}]*)\}", r"ref:\1", line)
-
-    # Citations:
-    # work just fine using latex syntax and are difficult to parse
-    # properly
-    # line = re.sub(r"\\cite[pt]*[* ]*\{([^}]*)\}", r"[[cite:&\1]]", line)
 
     # URL:
     line = re.sub(r"\\url[* ]*\{([^}]*)\}", r" \1 ", line)
@@ -714,25 +679,8 @@ def line_latex_to_orgmode(line):
     # Text:
     line = re.sub(r"\\textrm[* ]*\{([^}]*)\}", r"\1", line)
 
-    # Math text:
-    line = re.sub(r"\\mathbf[* ]*\{([^}]*)\}", r"*\1*", line)
-    line = re.sub(r"\\mathrm[* ]*\{([^}]*)\}", r"\1", line)
-    line = re.sub(r" *\\textgreater\{\} *", r" > ", line)
-    line = re.sub(r" *\\textless\{\} *", r" < ", line)
-    line = re.sub(r"\\textasciicircum\{\}", r"^", line)
-    line = re.sub(r"\\textasciicircum", r"^", line)
-
-    # Spaces in inline equations:
-    line = re.sub(r"^([^\$]*\$) ", r"\1", line)  # Remove space after first $ in line
-    line = re.sub(r" (\$[^$]*$)", r"\1", line)  # Remove space before last $ in line
-
-    # Inline -> full equations:
-    line = re.sub(
-        r"^ *\$([^$]*)\$ *$", r"\[ \1 \]\n", line
-    )  # Replace whole-line $...$ with \[...\]
-    line = re.sub(
-        r" +\$ +([^$]+) +\$ +", r"$ \1 $", line
-    )  # Replace leftover " $ text $ " text $"
+    # # convert inline equations
+    line = re.sub(r"\$([^$]*)\$", r"\(\1\)", line)
 
     # Symbols:
     line = re.sub(
@@ -745,24 +693,9 @@ def line_latex_to_orgmode(line):
     line = re.sub(r"\\BibTeX\\*", r"BibTeX", line)
     line = re.sub(r"\.\\ ", r". ", line)  # Abbreviation
 
-    # Fix equations:
-    line = re.sub(r"\\int *\\int *\\int", r"\\iiint", line)  # Need amsmath
-    line = re.sub(r"\\int *\\int", r"\\iint", line)  # Need amsmath
-    line = re.sub(
-        r"\|\|([^|]*)\|\|", r"$\\norm{\1}$", line
-    )  # Absolute value vector ||v|| -> $||v||$
-
-    # Footnote: ISSUE: may span multiple lines...
-    line = re.sub(
-        r"\\footnote\{([^}]*)\}", r" [fn:1: \1]", line
-    )  # Single-line footnote
-    line = re.sub(
-        r"\\footnote\{", r" [fn:1: ", line
-    )  # Left over: multi-line footnote: DiY
-
-    # Remove spaces:
-    line = re.sub(r"^ {1,99}", r"", line)  # Remove leading spaces
-    line = re.sub(r" {1,99}$", r"", line)  # Remove trailing spaces
+    ##  Remove spaces:
+    # line = re.sub(r"^ {1,99}", r"", line)  # Remove leading spaces
+    # line = re.sub(r" {1,99}$", r"", line)  # Remove trailing spaces
 
     return line
 
