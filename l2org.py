@@ -26,6 +26,7 @@ import re
 
 debug = False
 
+
 def main():
     """Main function."""
 
@@ -82,11 +83,11 @@ def get_arguments():
         outfile = args.outfile
 
     if args.infile == outfile:
-        sys.stderr.write("Input and output file have the same name: " + outfile + "\n")
+        sys.stderr.write(f"Input and output file have the same name: {outfile}" + "\n")
 
-    print("Input file:  " + args.infile)
+    print(f"Input file:  {args.infile}")
 
-    print("Output file: " + outfile)
+    print(f"Output file: {outfile}")
 
     return args.infile, outfile
 
@@ -167,18 +168,17 @@ def get_string_between_brackets(brackets: str, string: str) -> tuple[str, int, i
 def fix_bibliography(nl, lines, ofl) -> bool:
     """add the correct file extensions to the bib files"""
     new_list = ""
-    if "bibliography{" in nl:
-        bibstring = re.search(r"\{.*\}", nl).group()[1:-1]
-        if debug:
-            print(f"bibstring = {bibstring}")
-        biblist = bibstring.split(",")
-        for e in biblist:
-            new_list = new_list + e + ".bib,"
-        new_list = new_list[:-1]
-        ofl.write(f"bibliography:{new_list}")
-        return True
-    else:
+    if "bibliography{" not in nl:
         return False
+    bibstring = re.search(r"\{.*\}", nl).group()[1:-1]
+    if debug:
+        print(f"bibstring = {bibstring}")
+    biblist = bibstring.split(",")
+    for e in biblist:
+        new_list = new_list + e + ".bib,"
+    new_list = new_list[:-1]
+    ofl.write(f"bibliography:{new_list}")
+    return True
 
 
 def citations(nl, lines, ofl) -> bool:
@@ -204,7 +204,7 @@ def citations(nl, lines, ofl) -> bool:
     b2 = ""
 
     # test citation is present
-    if not "\cite" in nl:
+    if "\cite" not in nl:
         return False
 
     while nl.count("{") != nl.count("}"):
@@ -251,11 +251,7 @@ def citations(nl, lines, ofl) -> bool:
             print(f"temp = {temp}")
         # get text between first brackets
         b1, j1, i1 = get_string_between_brackets("[]", temp)
-        if b1:
-            cs = ct + "[" + b1 + "]"  # build citation string
-        else:
-            cs = ct + "[]"
-
+        cs = f"{ct}[{b1}]" if b1 else f"{ct}[]"
         if debug:
             print(f"b1 cs = {cs}")
 
@@ -263,10 +259,7 @@ def citations(nl, lines, ofl) -> bool:
         if temp[i1 + 1] == "[":
             b2, j2, i2 = get_string_between_brackets("[]", temp[i1 + 1 :])
             i1 = i1 + i2
-            if b2:
-                cs = cs + "[" + b2 + "]"
-            else:
-                cs = cs + "[]"
+            cs = f"{cs}[{b2}]" if b2 else f"{cs}[]"
         # get citations list
         if debug:
             print(f"b2 cs = {cs}")
@@ -288,7 +281,7 @@ def citations(nl, lines, ofl) -> bool:
     cl_list = cl.split(",")
     cl = ""
     for e in cl_list:  # org mode citation list
-        cl = cl + "&" + e.strip() + ";"
+        cl = f"{cl}&{e.strip()};"
 
     cl = cl[:-1]
 
@@ -299,9 +292,9 @@ def citations(nl, lines, ofl) -> bool:
 
     if b1 and not b2:
         cs = f"{ct}:{b1};{cl};"
-    elif b1 and b2:
+    elif b1:
         cs = f"{ct}:{b1};{cl};{b2}"
-    elif not b1 and b2:
+    elif b2:
         cs = f"{ct}:;{cl};{b2}"
     else:  # regular citation
         cs = f"{ct}:{cl}"
@@ -313,11 +306,9 @@ def citations(nl, lines, ofl) -> bool:
     line = line_latex_to_orgmode(f"{pre_text}{cs}")
     ofl.write(line)
 
-    if post_text != "":
-        # check for more citations
-        if not citations(post_text, lines, ofl):
-            line = line_latex_to_orgmode(post_text)
-            ofl.write(line)
+    if post_text != "" and not citations(post_text, lines, ofl):
+        line = line_latex_to_orgmode(post_text)
+        ofl.write(line)
 
     return True
 
@@ -347,7 +338,7 @@ def section_commands(nl, lines, ofl) -> bool:
     }
 
     # test if chapter or section present
-    if not ("chapter" in nl or "section" in nl):
+    if "chapter" not in nl and "section" not in nl:
         return False
 
     # test if multiline
@@ -402,7 +393,8 @@ def section_commands(nl, lines, ofl) -> bool:
         text_after = line_latex_to_orgmode(text_after)
         nl = f"{nl}{text_after}"
 
-    if debug: print(f"nl = {nl}")
+    if debug:
+        print(f"nl = {nl}")
     ofl.write(f"{nl}")
     return True
 
@@ -418,27 +410,26 @@ def special_environments(nl, lines, ofl) -> bool:
     """
 
     is_env = ""
+    is_env = re.search(r"^\\begin{.*?\}", nl)
+
+    if is_env is None:
+        return False
+
+    env = is_env.group()[7:-1]
     # list of environments you want to keep in the running text, rather
     # than wrapping in a latex export block
     exclude_env = ["itemize"]  #
-    is_env = re.search(r"^\\begin{.*?\}", nl)
-
-    if is_env is not None:
-        env = is_env.group()[7:-1]
-        if env in exclude_env:
-            return False
-        if debug:
-            print(f"env = {env}")
-        ofl.write("\n#+BEGIN_EXPORT latex\n")
-        while f"end{{{env}}}" not in nl:
-            if nl.strip() != "":
-                ofl.write(nl)
-                nl: str = next(lines)
-        ofl.write(f"\\end{{{env}}}\n")
-        ofl.write("#+END_EXPORT\n\n")
-    else:
+    if env in exclude_env:
         return False
-
+    if debug:
+        print(f"env = {env}")
+    ofl.write("\n#+BEGIN_EXPORT latex\n")
+    while f"end{{{env}}}" not in nl:
+        if nl.strip() != "":
+            ofl.write(nl)
+            nl: str = next(lines)
+    ofl.write(f"\\end{{{env}}}\n")
+    ofl.write("#+END_EXPORT\n\n")
     return True
 
 
@@ -463,29 +454,31 @@ def file_latex_to_orgmode(infile, outfile):
                     line = next(lines)
                     if line[0] == "%":  # keep comments
                         ofl.write(f"#+latex: {line}")
-                        if debug: print("found comment")
+                        if debug:
+                            print("found comment")
                     elif read_header(line, lines, ofl):
-                        if debug: print("found header")
-                        pass
+                        if debug:
+                            print("found header")
                     elif section_commands(line, lines, ofl):
-                        if debug: print("found section_commands")
-                        pass
+                        if debug:
+                            print("found section_commands")
                     elif special_environments(line, lines, ofl):
-                        if debug: print("found special_environments")
-                        pass
+                        if debug:
+                            print("found special_environments")
                     elif citations(line, lines, ofl):
-                        if debug: print("found citations")
-                        pass
+                        if debug:
+                            print("found citations")
                     elif fix_bibliography(line, lines, ofl):
-                        if debug: print("found bibliography")
-                        pass
+                        if debug:
+                            print("found bibliography")
                     else:
-                        if debug: print(f"writing line = '{line}'")
+                        if debug:
+                            print(f"writing line = '{line}'")
                         line = line_latex_to_orgmode(line)
                         ofl.write(f"{line}")
-                    # if debug: print(iline, line)
+                        # if debug: print(iline, line)
             except StopIteration:
-                print(str(iline) + " lines processed.")
+                print(f"{str(iline)} lines processed.")
                 exit
 
     # Reopen output file and remove empty lines:
@@ -551,11 +544,13 @@ def line_latex_to_orgmode(line):
 
     # Misc
     # avoid trivial inline math
-    line = re.sub(r"\$([0-9A-Za-z]+)?([\^|_])({\d+})([0-9A-Za-z])?\$", r"\1\2\3\4", line)
+    line = re.sub(
+        r"\$([0-9A-Za-z]+)?([\^|_])({\d+})([0-9A-Za-z])?\$", r"\1\2\3\4", line
+    )
     line = re.sub(r"\$(:?[<|>])*(:?[0-9]*)(\^\{[0-9]*\})\$", r"\1\2\3", line)
     line = re.sub(r"\$(:?[<|>])*(:?[0-9]*)(:?\^)*(:?[0-9])*\$", r"\1\2\3\4", line)
     line = re.sub(r"\$([<|>])*\$", r"\1", line)
-    
+
     line = re.sub(r"~", "\u00A0", line)
     line = re.sub(r"$~$", "~", line)
     line = re.sub(r"\$\\sim\$", "~", line)
