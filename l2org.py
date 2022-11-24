@@ -138,10 +138,14 @@ def read_header(nl, lines, ofl) -> bool:
 
 
 def get_string_between_brackets(brackets: str, string: str) -> tuple[str, int, int]:
-    """return the strinf delimited by two brackets
+    """return the string delimited by two brackets
     Arguments:
      brackets = "{}"
      string = "{Hello"}. Must start with first bracket!
+    return values:
+       string
+       start
+       stop index
     """
     rs = ""
     start = brackets[0]
@@ -349,29 +353,24 @@ def section_commands(nl, lines, ofl) -> bool:
             raise ValueError(f"Unable to find end of section in {nl}")
 
     # extract section stype and string
-    section_string = re.search(r"^.*?\}", nl).group()
-    if debug:
-        print(f"section_string = {section_string}")
-    # test if short format
-    if "[" in section_string:
-        section_type = re.search(r"^.*?\[", nl).group()[1:-1]
-        # ss = r"\\" + section_type + ".*\}"
-        # section_string = re.search(ss, nl).group()
-        short_title = re.search(r"\[.*?\]", section_string).group()
+    # section_string = re.search(r"^.*?\}", nl).group()
+
+    if "[" in nl:
+        short_title, j1, i1 = get_string_between_brackets("[]", nl)
+        short_title = line_latex_to_orgmode(short_title)
         short_title = f"PROPERTIES:\n:ALT_TITLE: {short_title}\n:END:\n"
+        section_type = re.search(r"^.*?\[", nl).group()[1:-1]
     else:
         section_type = re.search(r"^.*?\{", nl).group()[1:-1]
 
-    if debug:
-        print(f"section_type={section_type}")
-
-    section_title = re.search(r"\{.*?\}", section_string).group()[1:-1]
+    section_title, j1, i1 = get_string_between_brackets("{}", nl)
+    section_title = line_latex_to_orgmode(section_title)
 
     if debug:
-        print(f"section_title = {section_title}")
+        print(f"title={section_title}")
 
     # test if text after caption
-    text_after = nl.split(section_string, 1)[1]
+    text_after = nl.split(f"{{{section_title}}}", 1)[1]
 
     # get section type
     if section_type in marker_dict:
@@ -399,6 +398,35 @@ def section_commands(nl, lines, ofl) -> bool:
     return True
 
 
+def math_environments(nl, lines, ofl) -> bool:
+    """prevent math environments from being parsed"""
+    # list of known evironments
+    loke = ["linenomath",
+            "linenomath*",
+            "equation"]
+
+    is_env = ""
+    is_env = re.search(r"^\\begin{.*?\}", nl)
+    ta: list[str] = []
+    if is_env:
+        is_env = is_env.group()[7:-1]
+        print(f"is_env = {is_env}")
+
+    if is_env in loke:
+        print(f"found {is_env}")
+        while f"\\end{{{is_env}}}" not in nl:
+            ta.append(nl)
+            nl = next(lines)
+            
+        ta.append(f"\\end{{{is_env}}}\n")
+        # write array
+        for e in ta:
+            ofl.write(e)
+        return True
+    else:
+        return False
+
+
 def special_environments(nl, lines, ofl) -> bool:
     """Some environments a better handled by a latex export block
     parameters:
@@ -418,7 +446,7 @@ def special_environments(nl, lines, ofl) -> bool:
     env = is_env.group()[7:-1]
     # list of environments you want to keep in the running text, rather
     # than wrapping in a latex export block
-    exclude_env = ["itemize"]  #
+    exclude_env = ["itemize", "enumerate"]  #
     if env in exclude_env:
         return False
     if debug:
@@ -456,6 +484,9 @@ def file_latex_to_orgmode(infile, outfile):
                         ofl.write(f"#+latex: {line}")
                         if debug:
                             print("found comment")
+                    elif math_environments(line, lines, ofl):
+                        if debug:
+                            print("found math_environments")
                     elif read_header(line, lines, ofl):
                         if debug:
                             print("found header")
