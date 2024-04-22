@@ -131,7 +131,7 @@ def read_header(nl, lines, ofl, outfile) -> bool:
                     headers = headers + nl
             nl: str = next(lines)
         # write org file header
-        ofl.write("#+startup: latexpreview\n")
+        ofl.write("#+startup: latexpreview inlineimages\n")
         if title:
             ofl.write(title)
         if author:
@@ -400,7 +400,7 @@ def math_environments(nl, lines, ofl, outfile) -> bool:
         return nl
 
 
-def special_environments(nl, lines, ofl, outfile) -> bool:
+def special_environments(current_line, lines, ofl, outfile) -> bool:
     """Some environments a better handled by a latex export block
     parameters:
     nl: current line
@@ -411,23 +411,28 @@ def special_environments(nl, lines, ofl, outfile) -> bool:
     """
 
     is_env = ""
-    is_env = re.search(r"^\\begin{.*?\}", nl)
+    is_env = re.search(r"^\\begin{.*?\}", current_line)
 
     if is_env is None:
-        return nl
+        return current_line
 
     env = is_env.group()[7:-1]
     # list of environments you want to keep in the running text, rather
     # than wrapping in a latex export block
     exclude_env = ["itemize", "enumerate"]  #
     if env in exclude_env:
-        return nl
+        return current_line
 
     ofl.write("\n#+BEGIN_EXPORT latex\n")
-    while f"end{{{env}}}" not in nl:
-        if nl.strip() != "":
-            ofl.write(nl)
-            nl: str = next(lines)
+
+    print(f"end{{{env}}}, nl = {current_line}")
+
+    while f"end{{{env}}}" not in current_line:
+        if current_line.strip() != "":
+            print(current_line)
+            ofl.write(current_line)
+        current_line = next(lines)
+            
     ofl.write(f"\\end{{{env}}}\n")
     ofl.write("#+END_EXPORT\n\n")
     return True
@@ -507,18 +512,18 @@ def file_latex_to_orgmode(infile, outfile):
     # ofl = open(outfile, "w")
     with open(outfile, "w") as ofl:
         # ofl.write("#+startup: latexpreview")
-
         iline = 0
         with open(infile, "r") as lines:
             try:
                 while True:
                     iline += 1
                     line = next(lines)
+                    print(line)
                     scan_text(line, lines, ofl, outfile)
 
             except StopIteration:
                 print(f"{str(iline)} lines processed.")
-                exit
+                exit()
 
 
 def line_latex_to_orgmode(line):
