@@ -577,7 +577,7 @@ def line_latex_to_orgmode(line):
     line = re.sub(r"\$(:?[<|>])*(:?[0-9]*)(:?\^)*(:?[0-9])*\$", r"\1\2\3\4", line)
     line = re.sub(r"\$([<|>])*\$", r"\1", line)
 
-    line = re.sub(r"~", "\\\space{}", line)
+    line = re.sub(r"~", "\\\nbsp{}", line)
     line = re.sub(r"$~$", "~", line)
     line = re.sub(r"\$\\sim\$", "~", line)
     line = re.sub(r"\\textasciitilde\{\}", r"~", line)
