@@ -282,11 +282,11 @@ def citations(nl, lines, ofl, outfile) -> bool:
     cl = cl[:-1]
 
     if b1 and not b2:
-        cs = f"{ct}:{b1};{cl};"
+        cs = f"{ct}:{b1}{cl};"
     elif b1:
-        cs = f"{ct}:{b1};{cl};{b2}"
+        cs = f"{ct}:{b1}{cl};{b2}"
     elif b2:
-        cs = f"{ct}:;{cl};{b2}"
+        cs = f"{ct}:{cl};{b2}"
     else:  # regular citation
         cs = f"{ct}:{cl}"
 
@@ -425,11 +425,8 @@ def special_environments(current_line, lines, ofl, outfile) -> bool:
 
     ofl.write("\n#+BEGIN_EXPORT latex\n")
 
-    print(f"end{{{env}}}, nl = {current_line}")
-
     while f"end{{{env}}}" not in current_line:
         if current_line.strip() != "":
-            print(current_line)
             ofl.write(current_line)
         current_line = next(lines)
             
@@ -518,7 +515,6 @@ def file_latex_to_orgmode(infile, outfile):
                 while True:
                     iline += 1
                     line = next(lines)
-                    print(line)
                     scan_text(line, lines, ofl, outfile)
 
             except StopIteration:
@@ -581,7 +577,7 @@ def line_latex_to_orgmode(line):
     line = re.sub(r"\$(:?[<|>])*(:?[0-9]*)(:?\^)*(:?[0-9])*\$", r"\1\2\3\4", line)
     line = re.sub(r"\$([<|>])*\$", r"\1", line)
 
-    line = re.sub(r"~", "\u00A0", line)
+    line = re.sub(r"~", "\\\space{}", line)
     line = re.sub(r"$~$", "~", line)
     line = re.sub(r"\$\\sim\$", "~", line)
     line = re.sub(r"\\textasciitilde\{\}", r"~", line)
